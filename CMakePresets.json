@@ -2,19 +2,55 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "vcpkg",
-      "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build",
+      "name": "windows",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": true
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "$env{OS}",
+        "rhs": "Windows_NT"
+      }
+    },
+    {
+      "name": "linux",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/linux",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_C_COMPILER": "/usr/bin/gcc",
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "vcpkg",
-      "configurePreset": "vcpkg"
+      "name": "windows-debug",
+      "configurePreset": "windows",
+      "configuration": "Debug",
+      "description": "Build for Windows in Debug mode"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows",
+      "configuration": "Release",
+      "description": "Build for Windows in Release mode"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux",
+      "configuration": "Debug",
+      "description": "Build for Linux in Debug mode"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux",
+      "configuration": "Release",
+      "description": "Build for Linux in Release mode"
     }
   ]
 }

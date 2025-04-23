@@ -16,3 +16,7 @@ target_link_libraries(main PRIVATE glm::glm-header-only)
 
 find_package(glfw3 CONFIG REQUIRED)
 target_link_libraries(main PRIVATE glfw)
+target_compile_definitions(main PRIVATE GLFW_DLL)
+
+find_package(Vulkan REQUIRED)
+target_link_libraries(main PRIVATE Vulkan::Vulkan)

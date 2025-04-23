@@ -2,3 +2,5 @@ build
 vcpkg_installed
 .vscode
 .cache
+.vs
+out
