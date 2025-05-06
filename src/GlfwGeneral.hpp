@@ -1,7 +1,8 @@
 #include "VKBase.h"
+#include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-#pragma comment(lib, "glfw3.lib") //链接编译所需的静态库
+// #pragma comment(lib, "glfw3.lib") //链接编译所需的静态库
 
 //窗口的指针，全局变量自动初始化为NULL
 GLFWwindow* pWindow;
@@ -11,12 +12,29 @@ GLFWmonitor* pMonitor;
 const char* windowTitle = "EasyVK";
 
 bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable = true, bool limitFrameRate = true) {
+    using vulkan::graphics_base;
+
     if (!glfwInit()) {
         std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to initialize GLFW!\n");
         return false;
     }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, isResizable);
+
+    uint32_t extensionCount = 0;
+    const char** extensionNames;
+    extensionNames = glfwGetRequiredInstanceExtensions(&extensionCount);
+    if (!extensionNames) {
+        std::cout << std::format("[ InitializeWindow ]\nVulkan is not available on this machine!\n");
+        glfwTerminate();
+        return false;
+    }
+    for (size_t i = 0; i < extensionCount; i++){
+        std::cout << std::format("[ InitializeWindow ]\nExtension {}: {}\n", i, extensionNames[i]);
+        graphics_base.add_instance_extension(extensionNames[i]);
+    }
+    graphics_base.add_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+
     pMonitor = glfwGetPrimaryMonitor();
     const GLFWvidmode* pMode = glfwGetVideoMode(pMonitor);
     pWindow = fullScreen ?
