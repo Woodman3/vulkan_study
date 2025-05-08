@@ -2,6 +2,7 @@
 #include "EasyVKStart.h"
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <vulkan/vulkan_core.h>
 //定义vulkan命名空间，之后会把Vulkan中一些基本对象的封装写在其中
 namespace vulkan {
@@ -143,7 +144,7 @@ class graphicsBase {
                 }
                 for(auto& i:layer_to_check ){
                     if(std::find_if(available_layers.begin(), available_layers.end(), [i](const VkLayerProperties& layer) {
-                        return strcmp(layer.layerName, i) == 0;}) == available_layers.end()){
+                        return std::strcmp(layer.layerName, i) == 0;}) == available_layers.end()){
                         std::cout << std::format("[ graphicsBase ] ERROR\nLayer {} not found!\n", i);
                         i = nullptr;
                     }
@@ -173,7 +174,7 @@ class graphicsBase {
                 }
                 for(auto& i:extension_to_check ){
                     if(std::find_if(available_extensions.begin(), available_extensions.end(), [i](const VkExtensionProperties& extension) {
-                        return strcmp(extension.extensionName, i) == 0;}) == available_extensions.end()){
+                        return std::strcmp(extension.extensionName, i) == 0;}) == available_extensions.end()){
                         std::cout << std::format("[ graphicsBase ] ERROR\nExtension {} not found!\n", i);
                         i = nullptr;
                     }
@@ -204,6 +205,118 @@ class graphicsBase {
             return result;
         }
 
+        VkResult determine_physical_device(uint32_t device_index = 0 , bool enable_graphics_queue = true, bool enable_compute_queue = true) {
+            static constexpr uint32_t not_found = INT32_MAX; // == VK_QUEUE_FAMILY_IGNORED & INT32_MAX
+            //定义队列族索引组合的结构体
+            struct queueFamilyIndexCombination {
+                uint32_t graphics = VK_QUEUE_FAMILY_IGNORED;
+                uint32_t presentation = VK_QUEUE_FAMILY_IGNORED;
+                uint32_t compute = VK_QUEUE_FAMILY_IGNORED;
+            };
+            //queueFamilyIndexCombinations用于为各个物理设备保存一份队列族索引组合
+            static std::vector<queueFamilyIndexCombination> queueFamilyIndexCombinations(available_physical_devices.size());
+            auto& [ig,ip,ic] = queueFamilyIndexCombinations[device_index];
+            if(enable_compute_queue && ig == not_found ||
+                surface && ip == not_found ||
+                enable_graphics_queue && ic == not_found) {
+                    return VK_RESULT_MAX_ENUM;
+            }
+            if(enable_graphics_queue && ig == VK_QUEUE_FAMILY_IGNORED ||
+                enable_compute_queue && ic == VK_QUEUE_FAMILY_IGNORED ||
+                surface && ip == VK_QUEUE_FAMILY_IGNORED) {
+
+                uint32_t indices[3];
+                VkResult result = get_queue_family_indices(available_physical_devices[device_index], enable_graphics_queue, enable_compute_queue, indices);
+                if(result == VK_SUCCESS ||
+                    result == VK_RESULT_MAX_ENUM){
+                    
+                    if(enable_graphics_queue)
+                        ig = indices[0] & INT32_MAX;
+                    if(enable_compute_queue)
+                        ic = indices[1] & INT32_MAX;
+                    if(surface)
+                        ip = indices[2] & INT32_MAX;
+                }
+                if(result)
+                    return result;
+            }else{
+                queue_family_index_graphics = enable_compute_queue ? ig : VK_QUEUE_FAMILY_IGNORED;
+                queue_family_index_compute = enable_graphics_queue ? ic : VK_QUEUE_FAMILY_IGNORED;
+                queue_family_index_presentation = surface ? ip : VK_QUEUE_FAMILY_IGNORED;
+            }
+            physical_device = available_physical_devices[device_index];
+            return VK_SUCCESS;
+        }
+        
+        VkResult create_device(VkDeviceCreateFlags flags =0){
+            float queue_priority = 1.0f;
+            VkDeviceQueueCreateInfo queue_create_infos[3] = {
+                {
+                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                    .queueCount = 1,
+                    .pQueuePriorities = &queue_priority
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                    .queueCount = 1,
+                    .pQueuePriorities = &queue_priority
+                },
+                {
+                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                    .queueCount = 1,
+                    .pQueuePriorities = &queue_priority
+                }
+            };
+            uint32_t queue_create_info_count = 0;
+            if(queue_family_index_graphics != VK_QUEUE_FAMILY_IGNORED) {
+                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_graphics;
+                queue_create_info_count++;
+            }
+            if(queue_family_index_compute != VK_QUEUE_FAMILY_IGNORED) {
+                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_compute;
+                queue_create_info_count++;
+            }
+            if(queue_family_index_presentation != VK_QUEUE_FAMILY_IGNORED) {
+                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_presentation;
+                queue_create_info_count++;
+            }
+            VkPhysicalDeviceFeatures device_features;
+            vkGetPhysicalDeviceFeatures(physical_device, &device_features);
+            VkDeviceCreateInfo deviceCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                .flags = flags,
+                .queueCreateInfoCount = queue_create_info_count,
+                .pQueueCreateInfos = queue_create_infos,
+                .enabledExtensionCount = uint32_t(device_extensions.size()),
+                .ppEnabledExtensionNames = device_extensions.data(),
+                .pEnabledFeatures = &device_features
+            };
+            if(VkResult result = vkCreateDevice(physical_device, &deviceCreateInfo, nullptr, &device)) {
+                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to create a device!\nError code: {}\n", int32_t(result));
+                return result;
+            }
+            if(queue_family_index_graphics != VK_QUEUE_FAMILY_IGNORED) 
+                vkGetDeviceQueue(device, queue_family_index_graphics, 0, &queue_graphics);
+            if(queue_family_index_compute != VK_QUEUE_FAMILY_IGNORED) 
+                vkGetDeviceQueue(device, queue_family_index_compute, 0, &queue_compute);
+            if(queue_family_index_presentation != VK_QUEUE_FAMILY_IGNORED)
+                vkGetDeviceQueue(device, queue_family_index_presentation, 0, &queue_presentation);
+            vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
+            vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+            std::cout << std::format(
+                "Physical Device: {}\n",
+                physical_device_properties.deviceName);
+            return VK_SUCCESS;
+        }
+    
+    private:
+        static void add_layer_or_extension(std::vector<const char*>& vec, const char* name) {
+            if(std::find_if(vec.begin(), vec.end(), [name](const char* str) {
+                return std::strcmp(str, name) == 0;}) == vec.end()){
+                vec.push_back(name);
+            }
+        }
+
         VkResult get_queue_family_indices(VkPhysicalDevice physical_device,bool enable_graphics_queue,bool enable_compute_queue,uint32_t (&queue_family_indices)[3]) {
             uint32_t queue_family_count=0;
             vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, nullptr);
@@ -216,8 +329,8 @@ class graphicsBase {
             auto& [ig,ip,ic] = queue_family_indices;
             ig = ip = ic = VK_QUEUE_FAMILY_IGNORED;
             for (uint32_t i = 0; i < queue_family_count; i++) {
-                VkBool32 support_graphics = enable_compute_queue && queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT,
-                    support_compute = enable_graphics_queue && queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT,
+                VkBool32 support_graphics = enable_graphics_queue && queue_family_properties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT,
+                    support_compute = enable_compute_queue && queue_family_properties[i].queueFlags & VK_QUEUE_COMPUTE_BIT,
                     support_presentation = false;
 
                 if(surface) {
@@ -261,118 +374,6 @@ class graphicsBase {
             return VK_SUCCESS;
         }
 
-        VkResult determine_physical_device(uint32_t device_index = 0 , bool enable_graphics_queue = true, bool enable_compute_queue = true) {
-            static constexpr uint32_t not_found = INT32_MAX; // == VK_QUEUE_FAMILY_IGNORED & INT32_MAX
-            //定义队列族索引组合的结构体
-            struct queueFamilyIndexCombination {
-                uint32_t graphics = VK_QUEUE_FAMILY_IGNORED;
-                uint32_t presentation = VK_QUEUE_FAMILY_IGNORED;
-                uint32_t compute = VK_QUEUE_FAMILY_IGNORED;
-            };
-            //queueFamilyIndexCombinations用于为各个物理设备保存一份队列族索引组合
-            static std::vector<queueFamilyIndexCombination> queueFamilyIndexCombinations(available_physical_devices.size());
-            auto& [ig,ip,ic] = queueFamilyIndexCombinations[device_index];
-            if(enable_compute_queue && ig == not_found ||
-                surface && ip == not_found ||
-                enable_graphics_queue && ic == not_found) {
-                    return VK_RESULT_MAX_ENUM;
-            }
-            if(enable_graphics_queue && ig == VK_QUEUE_FAMILY_IGNORED ||
-                enable_compute_queue && ic == VK_QUEUE_FAMILY_IGNORED ||
-                surface && ip == VK_QUEUE_FAMILY_IGNORED) {
-
-                uint32_t indices[3];
-                VkResult result = get_queue_family_indices(available_physical_devices[device_index], enable_graphics_queue, enable_compute_queue, indices);
-                if(result == VK_SUCCESS ||
-                    result == VK_RESULT_MAX_ENUM){
-                    
-                    if(enable_graphics_queue)
-                        ig = indices[0] & INT32_MAX;
-                    if(enable_compute_queue)
-                        ic = indices[1] & INT32_MAX;
-                    if(surface)
-                        ip = indices[2] & INT32_MAX;
-                }
-                if(result)
-                    return result:
-            }else{
-                queue_family_index_graphics = enable_compute_queue ? ig : VK_QUEUE_FAMILY_IGNORED;
-                queue_family_index_compute = enable_graphics_queue ? ic : VK_QUEUE_FAMILY_IGNORED;
-                queue_family_index_presentation = surface ? ip : VK_QUEUE_FAMILY_IGNORED;
-            }
-            physical_device = available_physical_devices[device_index];
-            return VK_SUCCESS;
-        }
-        
-        VkResult create_device(VkDeviceCreateFlags flags =0){
-            float queue_priority = 1.0f;
-            VkDeviceQueueCreateInfo queue_create_infos[3] = {
-                {
-                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    .queueCount = 1,
-                    .pQueuePriorities = &queue_priority
-                },
-                {
-                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    .queueCount = 1,
-                    .pQueuePriorities = &queue_priority
-                },
-                {
-                    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                    .queueCount = 1,
-                    .pQueuePriorities = &queue_priority
-                }
-            };
-            uint32_t queue_create_info_count = 0;
-            if(queue_family_index_graphics != VK_QUEUE_FAMILY_IGNORED) {
-                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_graphics;
-                queue_create_info_count++;
-            }
-            if(queue_family_index_compute != VK_QUEUE_FAMILY_IGNORED) {
-                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_compute;
-                queue_create_info_count++;
-            }
-            if(queue_family_index_presentation != VK_QUEUE_FAMILY_IGNORED) {
-                queue_create_infos[queue_create_info_count].queueFamilyIndex = queue_family_index_presentation;
-                queue_create_info_count++;
-            }
-            VkPhsicalDeviceFeatures device_features;
-            vkGetPhysicalDeviceFeatures(physical_device, &device_features);
-            VkDeviceCreateInfo deviceCreateInfo = {
-                .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                .flags = flags,
-                .queueCreateInfoCount = queue_create_info_count,
-                .pQueueCreateInfos = queue_create_infos,
-                .pEnabledFeatures = &device_features,
-                .enabledExtensionCount = uint32_t(device_extensions.size()),
-                .ppEnabledExtensionNames = device_extensions.data()
-            };
-            if(VkResult result = vkCreateDevice(physical_device, &deviceCreateInfo, nullptr, &device)) {
-                std::cout << std::format("[ graphicsBase ] ERROR\nFailed to create a device!\nError code: {}\n", int32_t(result));
-                return result;
-            }
-            if(queue_family_index_graphics != VK_QUEUE_FAMILY_IGNORED) 
-                vkGetDeviceQueue(device, queue_family_index_graphics, 0, &queue_graphics);
-            if(queue_family_index_compute != VK_QUEUE_FAMILY_IGNORED) 
-                vkGetDeviceQueue(device, queue_family_index_compute, 0, &queue_compute);
-            if(queue_family_index_presentation != VK_QUEUE_FAMILY_IGNORED)
-                vkGetDeviceQueue(device, queue_family_index_presentation, 0, &queue_presentation);
-            vkPhysicalDeviceProperties(physical_device, &physical_device_properties);
-            vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
-            std::cout << std::format(
-                "Physical Device: {}\n",
-                physical_device_properties.deviceName);
-            return VK_SUCCESS;
-        }
-    
-    private:
-        static void add_layer_or_extension(std::vector<const char*>& vec, const char* name) {
-            // if (std::find(vec.begin(), vec.end(), name) == vec.end()) {
-            if(std::find_if(vec.begin(), vec.end(), [name](const char* str) {
-                return strcmp(str, name) == 0;} == vec.end()){
-                vec.push_back(name);
-            }
-        }
 };
 
 inline graphicsBase graphics_base;

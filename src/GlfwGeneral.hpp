@@ -59,7 +59,9 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
     if(graphics_base.get_physical_devices() ||
         graphics_base.determine_physical_device(0,true,false) ||
         graphics_base.create_device()) {
-            return false;
+
+        std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to create a Vulkan device!\n");
+        return false;
     }
 
     /*待Ch1-3和Ch1-4填充*/
