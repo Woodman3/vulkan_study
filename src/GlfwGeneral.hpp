@@ -63,12 +63,15 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
         std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to create a Vulkan device!\n");
         return false;
     }
-
+    if(graphics_base.create_swapchain()) {
+        std::cout << std::format("[ InitializeWindow ] ERROR\nFailed to create a Vulkan swapchain!\n");
+        return false;
+    }
     /*待Ch1-3和Ch1-4填充*/
     return true;
 }
 void TerminateWindow() {
-    /*待Ch1-4填充*/
+    vulkan::graphics_base.wait_idle();
     glfwTerminate();
 }
 void TitleFps() {
