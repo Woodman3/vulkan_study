@@ -8,7 +8,7 @@
 #include <vector>
 #include <vulkan/vulkan_core.h>
 namespace vulkan {
-#define DestroyHandleBy(Func) if (handle) { Func(graphicsBase::Base().Device(), handle, nullptr); handle = VK_NULL_HANDLE; }
+#define DestroyHandleBy(Func) if (handle) { Func(graphics_base.device, handle, nullptr); handle = VK_NULL_HANDLE; }
 #define MoveHandle handle = other.handle; other.handle = VK_NULL_HANDLE;
 #define DefineHandleTypeOperator operator auto() const { return handle; }
 #define DefineAddressFunction const auto Address() const { return &handle; }
@@ -549,6 +549,14 @@ class graphicsBase {
         return create_device(flags);
     }
 
+    VkResult wait_idle() const {
+        VkResult result = vkDeviceWaitIdle(device);
+        if(result) {
+            outStream << std::format("[ graphicsBase ] ERROR\nFailed to wait for device idle!\nError code: {}\n", int32_t(result));
+        }
+        return result;
+    }
+
     private:
 
     VkResult set_surface_formats(const VkSurfaceFormatKHR& surface_format) {
@@ -580,14 +588,6 @@ class graphicsBase {
             return recreate_swapchain();
         }
         return VK_SUCCESS;
-    }
-
-    VkResult wait_idle() const {
-        VkResult result = vkDeviceWaitIdle(device);
-        if(result) {
-            outStream << std::format("[ graphicsBase ] ERROR\nFailed to wait for device idle!\nError code: {}\n", int32_t(result));
-        }
-        return result;
     }
 
     VkResult create_swapchain_internal() {
